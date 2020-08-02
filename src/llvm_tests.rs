@@ -2,12 +2,12 @@ use std::collections::HashMap;
 use std::ffi::CString;
 use std::num::Wrapping;
 
-use bfir::AstNode::*;
-use bfir::Position;
-use execution::ExecutionState;
+use crate::bfir::AstNode::*;
+use crate::bfir::Position;
+use crate::execution::ExecutionState;
 use itertools::EitherOrBoth::Both;
 use itertools::Itertools;
-use llvm::compile_to_module;
+use crate::llvm::compile_to_module;
 
 /// Assert that two CString values are equal. If they're not, print
 /// the strings nicely (e.g. '\n' as an actual newline).

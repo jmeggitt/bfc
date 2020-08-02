@@ -7,6 +7,7 @@
 
 use std::collections::HashMap;
 use std::fmt;
+use std::mem::{replace, take};
 use std::num::Wrapping;
 
 use self::AstNode::*;
@@ -147,17 +148,41 @@ pub struct ParseError {
     pub position: Position,
 }
 
+pub fn parse(source: &str) -> Result<Vec<AstNode>, ParseError> {
+    // AstNodes in the current loop (or toplevel).
+    let mut instructions = Vec::new();
+    // Contains the instructions of open parent loops (or toplevel),
+    // and the starting indices of the loops.
+    let mut stack = Vec::new();
+
+    parse_inner(source, 0, &mut instructions, &mut stack)?;
+
+    if !stack.is_empty() {
+        let pos = stack.last().unwrap().1;
+        return Err(ParseError {
+            message: "This [ has no matching ]".to_owned(),
+            position: Position {
+                start: pos,
+                end: pos,
+            },
+        });
+    }
+
+    Ok(instructions)
+}
+
 /// Given a string of BF source code, parse and return our BF IR
 /// representation. If parsing fails, return an Info describing what
 /// went wrong.
-pub fn parse(source: &str) -> Result<Vec<AstNode>, ParseError> {
-    // AstNodes in the current loop (or toplevel).
-    let mut instructions = vec![];
-    // Contains the instructions of open parent loops (or toplevel),
-    // and the starting indices of the loops.
-    let mut stack = vec![];
-
+pub fn parse_inner(
+    source: &str,
+    offset: usize,
+    instructions: &mut Vec<AstNode>,
+    stack: &mut Vec<(Vec<AstNode>, usize)>,
+) -> Result<(), ParseError> {
     for (index, c) in source.chars().enumerate() {
+        let index = index + offset;
+
         match c {
             '+' => instructions.push(Increment {
                 amount: Wrapping(1),
@@ -201,20 +226,17 @@ pub fn parse(source: &str) -> Result<Vec<AstNode>, ParseError> {
                     end: index,
                 }),
             }),
-            '[' => {
-                stack.push((instructions, index));
-                instructions = vec![];
-            }
+            '[' => stack.push((take(instructions), index)),
             ']' => {
-                if let Some((mut parent_instr, open_index)) = stack.pop() {
-                    parent_instr.push(Loop {
-                        body: instructions,
+                if let Some((parent_instr, open_index)) = stack.pop() {
+                    let parent_instr = replace(instructions, parent_instr);
+                    instructions.push(Loop {
+                        body: parent_instr,
                         position: Some(Position {
                             start: open_index,
                             end: index,
                         }),
                     });
-                    instructions = parent_instr;
                 } else {
                     return Err(ParseError {
                         message: "This ] has no matching [".to_owned(),
@@ -229,24 +251,14 @@ pub fn parse(source: &str) -> Result<Vec<AstNode>, ParseError> {
         }
     }
 
-    if !stack.is_empty() {
-        let pos = stack.last().unwrap().1;
-        return Err(ParseError {
-            message: "This [ has no matching ]".to_owned(),
-            position: Position {
-                start: pos,
-                end: pos,
-            },
-        });
-    }
-
-    Ok(instructions)
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use pretty_assertions::assert_eq;
+
+    use super::*;
 
     #[test]
     fn parse_increment() {
@@ -255,7 +267,10 @@ mod tests {
             [Increment {
                 amount: Wrapping(1),
                 offset: 0,
-                position: Some(Position { start: 0, end: 0 }),
+                position: Some(Position {
+                    start: 0,
+                    end: 0,
+                }),
             }]
         );
         assert_eq!(
@@ -264,12 +279,18 @@ mod tests {
                 Increment {
                     amount: Wrapping(1),
                     offset: 0,
-                    position: Some(Position { start: 0, end: 0 }),
+                    position: Some(Position {
+                        start: 0,
+                        end: 0,
+                    }),
                 },
                 Increment {
                     amount: Wrapping(1),
                     offset: 0,
-                    position: Some(Position { start: 1, end: 1 }),
+                    position: Some(Position {
+                        start: 1,
+                        end: 1,
+                    }),
                 }
             ]
         );
@@ -282,7 +303,10 @@ mod tests {
             [Increment {
                 amount: Wrapping(-1),
                 offset: 0,
-                position: Some(Position { start: 0, end: 0 }),
+                position: Some(Position {
+                    start: 0,
+                    end: 0,
+                }),
             }]
         );
     }
@@ -293,7 +317,10 @@ mod tests {
             parse(">").unwrap(),
             [PointerIncrement {
                 amount: 1,
-                position: Some(Position { start: 0, end: 0 }),
+                position: Some(Position {
+                    start: 0,
+                    end: 0,
+                }),
             }]
         );
     }
@@ -304,7 +331,10 @@ mod tests {
             parse("<").unwrap(),
             [PointerIncrement {
                 amount: -1,
-                position: Some(Position { start: 0, end: 0 }),
+                position: Some(Position {
+                    start: 0,
+                    end: 0,
+                }),
             }]
         );
     }
@@ -314,7 +344,10 @@ mod tests {
         assert_eq!(
             parse(",").unwrap(),
             [Read {
-                position: Some(Position { start: 0, end: 0 })
+                position: Some(Position {
+                    start: 0,
+                    end: 0,
+                })
             }]
         );
     }
@@ -324,7 +357,10 @@ mod tests {
         assert_eq!(
             parse(".").unwrap(),
             [Write {
-                position: Some(Position { start: 0, end: 0 })
+                position: Some(Position {
+                    start: 0,
+                    end: 0,
+                })
             }]
         );
     }
@@ -333,7 +369,10 @@ mod tests {
     fn parse_empty_loop() {
         let expected = [Loop {
             body: vec![],
-            position: Some(Position { start: 0, end: 1 }),
+            position: Some(Position {
+                start: 0,
+                end: 1,
+            }),
         }];
         assert_eq!(parse("[]").unwrap(), expected);
     }
@@ -343,11 +382,17 @@ mod tests {
         let loop_body = vec![Increment {
             amount: Wrapping(1),
             offset: 0,
-            position: Some(Position { start: 1, end: 1 }),
+            position: Some(Position {
+                start: 1,
+                end: 1,
+            }),
         }];
         let expected = [Loop {
             body: loop_body,
-            position: Some(Position { start: 0, end: 2 }),
+            position: Some(Position {
+                start: 0,
+                end: 2,
+            }),
         }];
         assert_eq!(parse("[+]").unwrap(), expected);
     }
@@ -356,26 +401,41 @@ mod tests {
     fn parse_complex_loop() {
         let loop_body = vec![
             Read {
-                position: Some(Position { start: 2, end: 2 }),
+                position: Some(Position {
+                    start: 2,
+                    end: 2,
+                }),
             },
             Increment {
                 amount: Wrapping(1),
                 offset: 0,
-                position: Some(Position { start: 3, end: 3 }),
+                position: Some(Position {
+                    start: 3,
+                    end: 3,
+                }),
             },
         ];
         let expected = [
             Write {
-                position: Some(Position { start: 0, end: 0 }),
+                position: Some(Position {
+                    start: 0,
+                    end: 0,
+                }),
             },
             Loop {
                 body: loop_body,
-                position: Some(Position { start: 1, end: 4 }),
+                position: Some(Position {
+                    start: 1,
+                    end: 4,
+                }),
             },
             Increment {
                 amount: Wrapping(-1),
                 offset: 0,
-                position: Some(Position { start: 5, end: 5 }),
+                position: Some(Position {
+                    start: 5,
+                    end: 5,
+                }),
             },
         ];
         assert_eq!(parse(".[,+]-").unwrap(), expected);
@@ -396,33 +456,81 @@ mod tests {
 
     #[test]
     fn test_combine_pos() {
-        let pos1 = Some(Position { start: 1, end: 2 });
-        let pos2 = Some(Position { start: 3, end: 4 });
+        let pos1 = Some(Position {
+            start: 1,
+            end: 2,
+        });
+        let pos2 = Some(Position {
+            start: 3,
+            end: 4,
+        });
 
-        assert_eq!(pos1.combine(pos2), Some(Position { start: 1, end: 4 }));
+        assert_eq!(
+            pos1.combine(pos2),
+            Some(Position {
+                start: 1,
+                end: 4,
+            })
+        );
     }
 
     #[test]
     fn test_combine_order() {
-        let pos1 = Some(Position { start: 3, end: 4 });
-        let pos2 = Some(Position { start: 1, end: 2 });
+        let pos1 = Some(Position {
+            start: 3,
+            end: 4,
+        });
+        let pos2 = Some(Position {
+            start: 1,
+            end: 2,
+        });
 
-        assert_eq!(pos1.combine(pos2), Some(Position { start: 1, end: 4 }));
+        assert_eq!(
+            pos1.combine(pos2),
+            Some(Position {
+                start: 1,
+                end: 4,
+            })
+        );
     }
 
     #[test]
     fn test_combine_pos_not_consecutive() {
-        let pos1 = Some(Position { start: 1, end: 2 });
-        let pos2 = Some(Position { start: 4, end: 5 });
+        let pos1 = Some(Position {
+            start: 1,
+            end: 2,
+        });
+        let pos2 = Some(Position {
+            start: 4,
+            end: 5,
+        });
 
-        assert_eq!(pos1.combine(pos2), Some(Position { start: 4, end: 5 }));
+        assert_eq!(
+            pos1.combine(pos2),
+            Some(Position {
+                start: 4,
+                end: 5,
+            })
+        );
     }
 
     #[test]
     fn test_combine_pos_overlap() {
-        let pos1 = Some(Position { start: 1, end: 1 });
-        let pos2 = Some(Position { start: 1, end: 3 });
+        let pos1 = Some(Position {
+            start: 1,
+            end: 1,
+        });
+        let pos2 = Some(Position {
+            start: 1,
+            end: 3,
+        });
 
-        assert_eq!(pos1.combine(pos2), Some(Position { start: 1, end: 3 }));
+        assert_eq!(
+            pos1.combine(pos2),
+            Some(Position {
+                start: 1,
+                end: 3,
+            })
+        );
     }
 }

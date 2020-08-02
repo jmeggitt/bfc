@@ -7,8 +7,8 @@ use std::num::Wrapping;
 
 use itertools::Itertools;
 
-use crate::bfir::{AstNode, Cell, Combine, get_position, Position};
 use crate::bfir::AstNode::*;
+use crate::bfir::{get_position, AstNode, Cell, Combine, Position};
 use crate::diagnostics::Warning;
 
 const MAX_OPT_ITERATIONS: u64 = 40;
@@ -60,12 +60,13 @@ fn optimize_once(
     instrs: Vec<AstNode>,
     pass_specification: &Option<String>,
 ) -> (Vec<AstNode>, Option<Warning>) {
-    let pass_specification = pass_specification.clone().unwrap_or_else(||
+    let pass_specification = pass_specification.clone().unwrap_or_else(|| {
         "combine_inc,combine_ptr,known_zero,\
          multiply,zeroing_loop,combine_set,\
          dead_loop,redundant_set,read_clobber,\
-         pure_removal,offset_sort".into(),
-    );
+         pure_removal,offset_sort"
+            .into()
+    });
     let passes: Vec<_> = pass_specification.split(',').collect();
 
     let mut instrs = instrs;
@@ -113,10 +114,10 @@ fn optimize_once(
 }
 
 /// Defines a method on iterators to map a function over all loop bodies.
-trait MapLoopsExt: Iterator<Item=AstNode> {
+trait MapLoopsExt: Iterator<Item = AstNode> {
     fn map_loops<F>(&mut self, f: F) -> Vec<AstNode>
-        where
-            F: Fn(Vec<AstNode>) -> Vec<AstNode>,
+    where
+        F: Fn(Vec<AstNode>) -> Vec<AstNode>,
     {
         self.map(|instr| match instr {
             Loop { body, position } => Loop {
@@ -125,11 +126,11 @@ trait MapLoopsExt: Iterator<Item=AstNode> {
             },
             other => other,
         })
-            .collect()
+        .collect()
     }
 }
 
-impl<I> MapLoopsExt for I where I: Iterator<Item=AstNode> {}
+impl<I> MapLoopsExt for I where I: Iterator<Item = AstNode> {}
 
 /// Given an index into a vector of instructions, find the index of
 /// the previous instruction that modified the current cell. If we're
@@ -776,7 +777,8 @@ fn is_multiply_loop_body(body: &[AstNode]) -> bool {
 
     let changes = cell_changes(body);
     // A multiply loop must decrement cell #0.
-    if let Some(&Wrapping(-1)) = changes.get(&0) {} else {
+    if let Some(&Wrapping(-1)) = changes.get(&0) {
+    } else {
         return false;
     }
 

@@ -5,9 +5,9 @@ use std::num::Wrapping;
 use crate::bfir::AstNode::*;
 use crate::bfir::Position;
 use crate::execution::ExecutionState;
+use crate::llvm::compile_to_module;
 use itertools::EitherOrBoth::Both;
 use itertools::Itertools;
-use crate::llvm::compile_to_module;
 
 /// Assert that two CString values are equal. If they're not, print
 /// the strings nicely (e.g. '\n' as an actual newline).

@@ -1,16 +1,6 @@
 #![warn(trivial_numeric_casts)]
 //! bfc is a highly optimising compiler for BF.
 
-extern crate ansi_term;
-extern crate getopts;
-extern crate itertools;
-extern crate llvm_sys;
-#[cfg(test)]
-extern crate pretty_assertions;
-#[cfg(test)]
-extern crate quickcheck;
-extern crate tempfile;
-
 #[macro_use]
 extern crate matches;
 
@@ -21,9 +11,6 @@ use std::fs::File;
 use std::io::prelude::Read;
 use std::path::Path;
 use tempfile::NamedTempFile;
-
-#[cfg(test)]
-use pretty_assertions::assert_eq;
 
 mod bfir;
 mod bounds;
@@ -81,21 +68,6 @@ fn executable_name(bf_path: &str) -> String {
     }
 
     name_parts.join(".")
-}
-
-#[test]
-fn executable_name_bf() {
-    assert_eq!(executable_name("foo.bf"), "foo");
-}
-
-#[test]
-fn executable_name_b() {
-    assert_eq!(executable_name("foo_bar.b"), "foo_bar");
-}
-
-#[test]
-fn executable_name_relative_path() {
-    assert_eq!(executable_name("bar/baz.bf"), "baz");
 }
 
 fn print_usage(bin_name: &str, opts: Options) {
@@ -311,5 +283,26 @@ fn main() {
             eprintln!("{}", e);
             std::process::exit(2);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pretty_assertions::assert_eq;
+
+    #[test]
+    fn executable_name_bf() {
+        assert_eq!(executable_name("foo.bf"), "foo");
+    }
+
+    #[test]
+    fn executable_name_b() {
+        assert_eq!(executable_name("foo_bar.b"), "foo_bar");
+    }
+
+    #[test]
+    fn executable_name_relative_path() {
+        assert_eq!(executable_name("bar/baz.bf"), "baz");
     }
 }

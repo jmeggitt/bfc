@@ -131,10 +131,8 @@ fn movement(instr: &AstNode) -> (SaturatingInt, SaturatingInt) {
 
             match net_in_body {
                 SaturatingInt::Number(net_loop_movement) => {
-                    if net_loop_movement == 0 {
-                        (max_in_body, SaturatingInt::Number(0))
-                    } else if net_loop_movement < 0 {
-                        // Net movement was negative, so conservatively assume
+                    if net_loop_movement <= 0 {
+                        // If net movement was negative, conservatively assume
                         // it was zero (e.g. the loop may run zero times).
                         (max_in_body, SaturatingInt::Number(0))
                     } else {

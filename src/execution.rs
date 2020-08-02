@@ -58,15 +58,12 @@ pub fn max_steps() -> u64 {
     // It takes around 1 million steps to finish executing bottles.bf
     // at compile time. This is intolerably slow for debug builds of
     // bfc, but instant on a release build.
-    let mut steps = 10_000_000;
+    const MAX_STEPS: u64 = 10_000_000;
 
     match env::var_os("BFC_MAX_STEPS") {
-        Some(val) => {
-            steps = val.to_str().unwrap().parse::<u64>().unwrap_or(steps);
-        }
-        None => {}
-    };
-    steps
+        Some(val) => val.to_str().unwrap().parse::<u64>().unwrap_or(MAX_STEPS),
+        None => MAX_STEPS,
+    }
 }
 
 /// Compile time speculative execution of instructions. We return the
@@ -131,7 +128,6 @@ pub fn execute_with_state<'a>(
                             "This instruction moves the pointer to cell {}.",
                             new_cell_ptr
                         )
-                        .to_owned()
                     } else {
                         format!(
                             "This instruction moves the pointer after the last cell ({}), to \
@@ -139,7 +135,6 @@ pub fn execute_with_state<'a>(
                             state.cells.len() - 1,
                             new_cell_ptr
                         )
-                        .to_owned()
                     };
                     return Outcome::RuntimeError(Warning { message, position });
                 } else {
@@ -170,10 +165,7 @@ pub fn execute_with_state<'a>(
                                 dest_ptr, *cell_offset, cell_ptr
                             );
 
-                            return Outcome::RuntimeError(Warning {
-                                message: message.to_owned(),
-                                position,
-                            });
+                            return Outcome::RuntimeError(Warning { message, position });
                         }
                         if dest_ptr as usize >= state.cells.len() {
                             state.start_instr = Some(&instrs[instr_idx]);
@@ -183,8 +175,7 @@ pub fn execute_with_state<'a>(
                                      highest cell is {})",
                                     dest_ptr,
                                     state.cells.len() - 1
-                                )
-                                .to_owned(),
+                                ),
                                 position,
                             });
                         }

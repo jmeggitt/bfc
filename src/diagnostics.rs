@@ -15,7 +15,6 @@ pub struct Warning {
 
 /// The severity of the Info.
 #[derive(Debug)]
-#[allow(dead_code)]
 pub enum Level {
     Warning,
     Error,

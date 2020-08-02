@@ -1,11 +1,4 @@
 #![warn(trivial_numeric_casts)]
-// option_unwrap_used is specific to clippy. However, we don't want to
-// add clippy to the build requirements, so we build without it and
-// ignore any warnings about rustc not recognising clippy's lints.
-#![allow(unknown_lints)]
-// TODO: enable this warning and cleanup.
-#![allow(option_unwrap_used)]
-
 //! bfc is a highly optimising compiler for BF.
 
 extern crate ansi_term;
@@ -120,7 +113,7 @@ fn convert_io_error<T>(result: Result<T, std::io::Error>) -> Result<T, String> {
 // TODO: return a Vec<Info> that may contain warnings or errors,
 // instead of printing in lots of different place shere.
 fn compile_file(matches: &Matches) -> Result<(), String> {
-    let path = &matches.free[0];
+    let path: &String = &matches.free[0];
 
     let src = match slurp(path) {
         Ok(src) => src,

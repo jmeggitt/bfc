@@ -20,6 +20,7 @@ use crate::bfir::AstNode::*;
 use crate::bfir::{AstNode, Cell};
 
 use crate::execution::ExecutionState;
+use crate::diagnostics::Info;
 
 const LLVM_FALSE: LLVMBool = 0;
 const LLVM_TRUE: LLVMBool = 1;
@@ -914,7 +915,7 @@ struct TargetMachine {
 }
 
 impl TargetMachine {
-    fn new(target_triple: *const i8) -> Result<Self, String> {
+    fn new(target_triple: *const i8) -> Result<Self, Info> {
         let mut target = null_mut();
         let mut err_msg_ptr = null_mut();
         unsafe {
@@ -926,7 +927,7 @@ impl TargetMachine {
 
                 let err_msg_cstr = CStr::from_ptr(err_msg_ptr as *const _);
                 let err_msg = str::from_utf8(err_msg_cstr.to_bytes()).unwrap();
-                return Err(err_msg.to_owned());
+                return Err(Info::error(err_msg.to_owned()));
             }
         }
 
@@ -972,7 +973,7 @@ pub fn init_llvm() {
     }
 }
 
-pub fn write_object_file(module: &mut Module, path: &str) -> Result<(), String> {
+pub fn write_object_file(module: &mut Module, path: &str) -> Result<(), Info> {
     unsafe {
         let target_triple = LLVMGetTarget(module.module);
         let target_machine = TargetMachine::new(target_triple)?;
@@ -987,7 +988,7 @@ pub fn write_object_file(module: &mut Module, path: &str) -> Result<(), String> 
         );
 
         if result != 0 {
-            panic!("obj_error: {:?}", CStr::from_ptr(obj_error as *const _));
+            return Err(Info::error(format!("obj_error: {:?}", CStr::from_ptr(obj_error as *const _))));
         }
     }
     Ok(())

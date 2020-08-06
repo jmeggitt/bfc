@@ -25,64 +25,69 @@ pub enum Level {
 #[derive(Debug)]
 pub struct Info {
     pub level: Level,
-    pub filename: String,
+    pub filename: Option<String>,
     pub message: String,
     pub position: Option<Position>,
     pub source: Option<String>,
+    pub line_col: Option<(u64, u64)>,
 }
 
-// Given an index into a string, return the line number and column
-// count (both zero-indexed).
-fn position(s: &str, i: usize) -> (usize, usize) {
-    let mut char_count = 0;
-    for (line_idx, line) in s.split('\n').enumerate() {
-        let line_length = line.len();
-        if char_count + line_length >= i {
-            return (line_idx, i - char_count);
+impl Info {
+    pub fn warn(msg: impl Into<String>) -> Self {
+        Info {
+            level: Level::Warning,
+            filename: None,
+            message: msg.into(),
+            position: None,
+            source: None,
+            line_col: None
         }
-
-        char_count += line_length + 1;
     }
 
-    unreachable!()
+    pub fn error(msg: impl Into<String>) -> Self {
+        Info {
+            level: Level::Error,
+            filename: None,
+            message: msg.into(),
+            position: None,
+            source: None,
+            line_col: None
+        }
+    }
 }
 
 impl fmt::Display for Info {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        let mut file_text = self.filename.to_owned();
+        let mut file_text = match &self.filename {
+            Some(v) => v.clone(),
+            None => String::from(""),
+        };
 
         // Find line and column offsets, if we have an index.
-        let offsets = match (&self.position, &self.source) {
-            (&Some(range), &Some(ref source)) => {
+        let offsets = match (&self.position, &self.line_col) {
+            (&Some(range), &Some((line_idx, column_idx))) => {
                 debug_assert!(range.start <= range.end);
 
-                let (line_idx, column_idx) = position(source, range.start);
-
+                // let (line_idx, column_idx) = position(source, range.start);
+                //
                 file_text = file_text + &format!(":{}:{}", line_idx + 1, column_idx + 1);
-                Some((line_idx, column_idx, range.end - range.start))
+                Some((column_idx, range.end - range.start))
             }
             _ => None,
         };
 
-        let level_text;
-        let color;
-        match self.level {
-            Level::Warning => {
-                color = Purple;
-                level_text = " warning: ";
-            }
-            Level::Error => {
-                color = Red;
-                level_text = " error: ";
-            }
-        }
+        let (color, level_text) = match self.level {
+            Level::Warning => (Purple, " warning: "),
+            Level::Error => (Red, " error: "),
+        };
 
         let mut context_line = "".to_owned();
         let mut caret_line = "".to_owned();
-        if let (Some((line_idx, column_idx, width)), &Some(ref source)) = (offsets, &self.source) {
+        if let (Some((column_idx, width)), &Some(ref source)) = (offsets, &self.source) {
             // The faulty line of code.
-            let line = source.split('\n').nth(line_idx).unwrap();
-            context_line = "\n".to_owned() + line;
+            // let line = source.split('\n').nth(line_idx).unwrap();
+            // context_line = "\n".to_owned() + line;
+            context_line = source.clone();
 
             // Highlight the faulty characters on that line.
             caret_line += "\n";

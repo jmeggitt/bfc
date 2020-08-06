@@ -4,13 +4,10 @@
 #[macro_use]
 extern crate matches;
 
-use diagnostics::{Info, Level};
-use getopts::{Matches, Options};
+use diagnostics::Info;
+use getopts::Options;
 use std::env;
-use std::fs::File;
-use std::io::prelude::Read;
 use std::path::Path;
-use tempfile::NamedTempFile;
 
 mod bfir;
 mod bounds;
@@ -19,6 +16,7 @@ mod execution;
 mod llvm;
 mod peephole;
 mod shell;
+mod io;
 
 #[cfg(test)]
 mod llvm_tests;
@@ -26,36 +24,6 @@ mod llvm_tests;
 mod peephole_tests;
 #[cfg(test)]
 mod soundness_tests;
-
-/// Read the contents of the file at path, and return a string of its
-/// contents. Return a diagnostic if we can't open or read the file.
-fn slurp(path: &str) -> Result<String, Info> {
-    let mut file = match File::open(path) {
-        Ok(file) => file,
-        Err(message) => {
-            return Err(Info {
-                level: Level::Error,
-                filename: path.to_owned(),
-                message: format!("{}", message),
-                position: None,
-                source: None,
-            });
-        }
-    };
-
-    let mut contents = String::new();
-
-    match file.read_to_string(&mut contents) {
-        Ok(_) => Ok(contents),
-        Err(message) => Err(Info {
-            level: Level::Error,
-            filename: path.to_owned(),
-            message: format!("{}", message),
-            position: None,
-            source: None,
-        }),
-    }
-}
 
 /// Convert "foo.bf" to "foo".
 fn executable_name(bf_path: &str) -> String {
@@ -75,127 +43,11 @@ fn print_usage(bin_name: &str, opts: Options) {
     print!("{}", opts.usage(&brief));
 }
 
-fn convert_io_error<T>(result: Result<T, std::io::Error>) -> Result<T, String> {
-    match result {
-        Ok(value) => Ok(value),
-        Err(e) => Err(format!("{}", e)),
-    }
-}
-
-// TODO: return a Vec<Info> that may contain warnings or errors,
-// instead of printing in lots of different place shere.
-fn compile_file(matches: &Matches) -> Result<(), String> {
-    let path: &String = &matches.free[0];
-
-    let src = match slurp(path) {
-        Ok(src) => src,
-        Err(info) => {
-            return Err(format!("{}", info));
-        }
-    };
-
-    let mut instrs = match bfir::parse(&src) {
-        Ok(instrs) => instrs,
-        Err(parse_error) => {
-            let info = Info {
-                level: Level::Error,
-                filename: path.to_owned(),
-                message: parse_error.message,
-                position: Some(parse_error.position),
-                source: Some(src),
-            };
-            return Err(format!("{}", info));
-        }
-    };
-
-    let opt_level = matches.opt_str("opt").unwrap_or_else(|| String::from("2"));
-    if opt_level != "0" {
-        let pass_specification = matches.opt_str("passes");
-        let (opt_instrs, warnings) = peephole::optimize(instrs, &pass_specification);
-        instrs = opt_instrs;
-
-        for warning in warnings {
-            let info = Info {
-                level: Level::Warning,
-                filename: path.to_owned(),
-                message: warning.message,
-                position: warning.position,
-                source: Some(src.clone()),
-            };
-            eprintln!("{}", info);
-        }
-    }
-
-    if matches.opt_present("dump-ir") {
-        for instr in &instrs {
-            println!("{}", instr);
-        }
-        return Ok(());
-    }
-
-    let (state, execution_warning) = if opt_level == "2" {
-        execution::execute(&instrs, execution::max_steps())
-    } else {
-        let mut init_state = execution::ExecutionState::initial(&instrs[..]);
-        // TODO: this will crash on the empty program.
-        init_state.start_instr = Some(&instrs[0]);
-        (init_state, None)
-    };
-
-    if let Some(execution_warning) = execution_warning {
-        let info = Info {
-            level: Level::Warning,
-            filename: path.to_owned(),
-            message: execution_warning.message,
-            position: execution_warning.position,
-            source: Some(src),
-        };
-        eprintln!("{}", info);
-    }
-
-    llvm::init_llvm();
-    let target_triple = matches.opt_str("target");
-    let mut llvm_module = llvm::compile_to_module(path, target_triple.clone(), &instrs, &state);
-
-    if matches.opt_present("dump-llvm") {
-        let llvm_ir_cstr = llvm_module.to_cstring();
-        let llvm_ir = String::from_utf8_lossy(llvm_ir_cstr.as_bytes());
-        println!("{}", llvm_ir);
-        return Ok(());
-    }
-
-    let llvm_opt_raw = matches
-        .opt_str("llvm-opt")
-        .unwrap_or_else(|| "3".to_owned());
-    let mut llvm_opt = llvm_opt_raw.parse::<i64>().unwrap_or(3);
-    if llvm_opt < 0 || llvm_opt > 3 {
-        // TODO: warn on unrecognised input.
-        llvm_opt = 3;
-    }
-
-    llvm::optimise_ir(&mut llvm_module, llvm_opt);
-
-    // Compile the LLVM IR to a temporary object file.
-    let object_file = convert_io_error(NamedTempFile::new())?;
-    let obj_file_path = object_file.path().to_str().expect("path not valid utf-8");
-    llvm::write_object_file(&mut llvm_module, &obj_file_path)?;
-
-    let output_name = executable_name(path);
-    link_object_file(&obj_file_path, &output_name, target_triple)?;
-
-    let strip_opt = matches.opt_str("strip").unwrap_or_else(|| "yes".to_owned());
-    if strip_opt == "yes" {
-        strip_executable(&output_name)?
-    }
-
-    Ok(())
-}
-
 fn link_object_file(
     object_file_path: &str,
     executable_path: &str,
     target_triple: Option<String>,
-) -> Result<(), String> {
+) -> Result<(), Info> {
     // Link the object file.
     let clang_args = if let Some(ref target_triple) = target_triple {
         vec![
@@ -212,7 +64,7 @@ fn link_object_file(
     shell::run_shell_command("clang", &clang_args[..])
 }
 
-fn strip_executable(executable_path: &str) -> Result<(), String> {
+fn strip_executable(executable_path: &str) -> Result<(), Info> {
     let strip_args = ["-s", &executable_path[..]];
     shell::run_shell_command("strip", &strip_args[..])
 }
@@ -277,10 +129,12 @@ fn main() {
         std::process::exit(1);
     }
 
-    match compile_file(&matches) {
+    match io::compile_file(&matches) {
         Ok(_) => {}
-        Err(e) => {
-            eprintln!("{}", e);
+        Err(errors) => {
+            for error in errors {
+                eprintln!("{}", error);
+            }
             std::process::exit(2);
         }
     }

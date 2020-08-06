@@ -148,6 +148,7 @@ pub struct ParseError {
     pub position: Position,
 }
 
+#[cfg(test)]
 pub fn parse(source: &str) -> Result<Vec<AstNode>, ParseError> {
     // AstNodes in the current loop (or toplevel).
     let mut instructions = Vec::new();

@@ -2,6 +2,7 @@
 //! handling stderr when they fail.
 
 use std::process::Command;
+use crate::diagnostics::Info;
 
 // TODO: release this as a simple rust package.
 
@@ -13,7 +14,7 @@ use std::process::Command;
 /// If the command isn't on $PATH, returns Err with a helpful
 /// message. If the command returns a non-zero exit code, returns Err
 /// with stderr.
-fn shell_command(command: &str, args: &[&str]) -> Result<String, String> {
+fn shell_command(command: &str, args: &[&str]) -> Result<String, Info> {
     let mut c = Command::new(command);
     for arg in args {
         c.arg(arg);
@@ -26,17 +27,18 @@ fn shell_command(command: &str, args: &[&str]) -> Result<String, String> {
                 Ok((*stdout).to_owned())
             } else {
                 let stderr = String::from_utf8_lossy(&result.stderr);
-                Err((*stderr).to_owned())
+                Err(Info::error((*stderr).to_owned()))
             }
         }
-        Err(_) => Err(format!("Could not execute '{}'. Is it on $PATH?", command)),
+        Err(_) => Err(Info::error(format!("Could not execute '{}'. Is it on $PATH?", command))),
     }
 }
 
 /// Execute a CLI command as `shell_command`, but ignore stdout.
-pub fn run_shell_command(command: &str, args: &[&str]) -> Result<(), String> {
-    match shell_command(command, args) {
-        Ok(_) => Ok(()),
-        Err(e) => Err(e),
-    }
+pub fn run_shell_command(command: &str, args: &[&str]) -> Result<(), Info> {
+    // match shell_command(command, args) {
+    //     Ok(_) => Ok(()),
+    //     Err(e) => Err(Info::error(e)),
+    // }
+    shell_command(command, args).map(|_|())
 }

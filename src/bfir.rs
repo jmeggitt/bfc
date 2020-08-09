@@ -34,32 +34,36 @@ impl fmt::Debug for Position {
     }
 }
 
-pub trait Combine<T> {
-    fn combine(&self, _: T) -> T;
+pub trait Combine {
+    fn combine(&self, _: Self) -> Self;
 }
 
-impl Combine<Option<Position>> for Option<Position> {
+impl<T: Combine> Combine for Option<T> {
     fn combine(&self, other: Self) -> Self {
-        match (*self, other) {
-            (Some(pos1), Some(pos2)) => {
-                let (first_pos, second_pos) = if pos1.start <= pos2.start {
-                    (pos1, pos2)
-                } else {
-                    (pos2, pos1)
-                };
-
-                // If they're adjacent positions, we can merge them.
-                if first_pos.end + 1 >= second_pos.start {
-                    Some(Position {
-                        start: first_pos.start,
-                        end: second_pos.end,
-                    })
-                } else {
-                    // Otherwise, just use the second position.
-                    Some(pos2)
-                }
-            }
+        match (self.as_ref(), other) {
+            (Some(a), Some(b)) => Some(a.combine(b)),
             _ => None,
+        }
+    }
+}
+
+impl Combine for Position {
+    fn combine(&self, other: Self) -> Self {
+        let (first_pos, second_pos) = if self.start <= other.start {
+            (*self, other)
+        } else {
+            (other, *self)
+        };
+
+        // If they're not adjacent positions, just use the second position.
+        if first_pos.end + 1 < second_pos.start {
+            return other
+        }
+
+        // If they're adjacent positions, we can merge them.
+        Position {
+            start: first_pos.start,
+            end: second_pos.end,
         }
     }
 }
